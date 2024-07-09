@@ -73,6 +73,11 @@ async def transcribe_audio(file: UploadFile = File(...)):
         # 예측 결과에서 텍스트 추출
         predicted_ids = torch.argmax(logits, dim=-1)
         transcription = processor.batch_decode(predicted_ids)
+        
+        # 인식된 텍스트를 파일로 저장
+        text_file = "transcription.txt"
+        with open(text_file, "w") as f:
+            f.write(transcription[0])
 
         return {"transcription": transcription[0]}
 
