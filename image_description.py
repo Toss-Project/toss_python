@@ -7,7 +7,7 @@ import base64 #표준 라이브러리에 있음
 
 app = FastAPI()
 
-@app.post("/uploadfile/")
+@app.post("/image_description/")
 async def simulate_image_description(file: UploadFile):
     
     

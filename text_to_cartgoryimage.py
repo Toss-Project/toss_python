@@ -8,8 +8,8 @@ pipe = pipe.to("cuda")
 app = FastAPI()
 
 
-@app.post("/generate_image/")
-async def generate_image_from_text(text: str = Form(...)):
+@app.post("/text_to_cartgoryImage/")
+async def text_to_cartgoryImage(text: str = Form(...)):
 
     prompt = text
     image = pipe(prompt).images[0]  
