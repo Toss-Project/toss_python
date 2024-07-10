@@ -50,6 +50,7 @@ from pydub import AudioSegment
 import subprocess
 
 # FFmpeg 경로 설정 (실제 경로로 변경해주세요)
+# 시스템 환경변수 -> 시스템변수-> path 추가해야함(아래 경로 추가)
 ffmpeg_path = r"D:\\Python\\ffmpeg-2024-07-07-git-0619138639-full_build\\bin"
 os.environ["PATH"] += os.pathsep + ffmpeg_path
 
