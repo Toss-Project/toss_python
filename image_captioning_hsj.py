@@ -3,14 +3,16 @@ from random import randint
 import ollama
 import torch
 from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler
-from io import BytesIO
 from fastapi.responses import FileResponse
-import os
 from fastapi.middleware.cors import CORSMiddleware
 
-model_id = "stabilityai/stable-diffusion-2"
-scheduler = EulerDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
-pipe = StableDiffusionPipeline.from_pretrained(model_id, scheduler=scheduler, torch_dtype=torch.float16)
+# model_id = "stabilityai/stable-diffusion-2"
+# scheduler = EulerDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
+# pipe = StableDiffusionPipeline.from_pretrained(model_id, scheduler=scheduler, torch_dtype=torch.float16)
+# pipe = pipe.to("cuda")
+
+model_id = "runwayml/stable-diffusion-v1-5"
+pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
 
 router = APIRouter()
@@ -21,6 +23,13 @@ router = APIRouter()
 #     "http://localhost:3000",
 #     "*",  # 모든 도메인 허용
 # ]
+
+# CORS 설정
+# origins = [
+#     "http://localhost",
+#     "http://localhost:3000"
+# ]
+
 
 # app.add_middleware(
 #     CORSMiddleware,
