@@ -1,14 +1,28 @@
 # STEP 1
-from fastapi import APIRouter, File, UploadFile
+from fastapi import FastAPI, File, UploadFile
 import ollama
 import base64 #표준 라이브러리에 있음
+import torch
+from fastapi.middleware.cors import CORSMiddleware
 
 
+app = FastAPI()
 
-router = APIRouter()
+# CORS 설정
+origins = [
+    "http://localhost",
+    "http://localhost:3000",
+]
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["*"],
+)
 
-@router.post("/image_description/")
+@app.post("/image_description/")
 async def simulate_image_description(file: UploadFile = File(...)):
     
     
@@ -19,33 +33,15 @@ async def simulate_image_description(file: UploadFile = File(...)):
     
     model = ollama.Client()
     
-    # Bakllava 모델에 이미지와 프롬프트 전송
+    # llava 모델에 이미지와 프롬프트 전송
     prompt = "Please describe this image with different content in English three times within 30 characters in one template sentence. And don't say anything other than the three template sentences. Organize the three template sentences into numbers 1, 2, and 3, and just write the image description."
     response = model.generate(
         model='llava:7b',
         prompt=prompt,
         images=[image_base64]
     )
-    # response2 = model.generate(
-    #     model='llava:7b',
-    #     prompt=prompt,
-    #     images=[image_base64]
-    # )
-    # response3 = model.generate(
-    #     model='llava:7b',
-    #     prompt=prompt,
-    #     images=[image_base64]
-    # )
-    # for i in range(3):
-    #     if response1['response'] == response2['response']:
-    #         response2 = await model.generate(
-    #         model='bakllava',
-    #         prompt=prompt,
-    #         images=[image_base64]
-    #         )
-    
-    # response_total=[response1['response'],response2['response'],response3['response']]
-    # return response_total
+
+    torch.cuda.empty_cache()
 
     return response['response']
 
