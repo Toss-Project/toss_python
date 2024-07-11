@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import APIRouter
 from random import randint
 import ollama
 import torch
@@ -13,24 +13,24 @@ scheduler = EulerDiscreteScheduler.from_pretrained(model_id, subfolder="schedule
 pipe = StableDiffusionPipeline.from_pretrained(model_id, scheduler=scheduler, torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
 
-app = FastAPI()
+router = APIRouter()
 
-# CORS 설정
-origins = [
-    "http://localhost",
-    "http://localhost:3000",
-    "*",  # 모든 도메인 허용
-]
+# # CORS 설정
+# origins = [
+#     "http://localhost",
+#     "http://localhost:3000",
+#     "*",  # 모든 도메인 허용
+# ]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=origins,
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
-@app.get("/random-image-generator/")
+@router.get("/random-image-generator/")
 async def random_image_generator():
     # 랜덤 카테고리 선정
     random_category = ["fruit", "school", "hospital", "park", "mart", "friend", "football", "home", "airplane", "bus"]
