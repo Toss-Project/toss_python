@@ -4,7 +4,6 @@ import ollama
 import base64 #표준 라이브러리에 있음
 
 
-
 router = APIRouter()
 
 
