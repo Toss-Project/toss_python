@@ -42,6 +42,7 @@
 import os
 import traceback
 from fastapi import FastAPI, File, UploadFile, HTTPException
+# from fastapi import APIRouter, File, UploadFile, HTTPException
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 import torch
 import torchaudio
@@ -55,6 +56,7 @@ ffmpeg_path = r"C:\\ffmpeg-2024-07-07-git-0619138639-full_build\\bin"
 os.environ["PATH"] += os.pathsep + ffmpeg_path
 
 app = FastAPI()
+# router = APIRouter()
 
 # CORS 설정
 origins = ["*"]
@@ -82,6 +84,7 @@ AudioSegment.converter = os.path.join(ffmpeg_path, "ffmpeg.exe")
 AudioSegment.ffmpeg = os.path.join(ffmpeg_path, "ffmpeg.exe")
 AudioSegment.ffprobe = os.path.join(ffmpeg_path, "ffprobe.exe")
 
+# @app.post("/api/automaticspeechrecognition")
 @app.post("/api/automaticspeechrecognition")
 async def transcribe_audio(file: UploadFile = File(..., max_size=1024*1024*10)):  # 10MB로 제한
     try:
