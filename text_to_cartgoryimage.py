@@ -1,11 +1,28 @@
 from diffusers import StableDiffusionPipeline
 import torch
 from fastapi import FastAPI, Form
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+import io
 
 model_id = "runwayml/stable-diffusion-v1-5"
 pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
 app = FastAPI()
+
+# CORS 설정
+origins = [
+    "http://localhost",
+    "http://localhost:3000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["*"],
+)
 
 
 @app.post("/text_to_cartgoryImage/")
@@ -14,8 +31,8 @@ async def text_to_cartgoryImage(text: str = Form(...)):
     prompt = text
     image = pipe(prompt).images[0]  
         
-    image_path = f"{text}.png"
-    image.save(image_path)
+    img_byte_arr = io.BytesIO()
+    image.save(img_byte_arr, format='PNG')
+    img_byte_arr = img_byte_arr.getvalue()
 
-    # return {"image_path": image_path}
-    return image.show(image_path)
+    return StreamingResponse(io.BytesIO(img_byte_arr), media_type="image/png")
