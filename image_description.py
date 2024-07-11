@@ -1,14 +1,15 @@
 # STEP 1
-from fastapi import FastAPI, File, UploadFile
+from fastapi import APIRouter, File, UploadFile
 import ollama
 import base64 #표준 라이브러리에 있음
 
-# STEP 2
 
-app = FastAPI()
 
-@app.post("/image_description/")
-async def simulate_image_description(file: UploadFile):
+router = APIRouter()
+
+
+@router.post("/image_description/")
+async def simulate_image_description(file: UploadFile = File(...)):
     
     
     contents = await file.read()
