@@ -1,28 +1,14 @@
 # STEP 1
-from fastapi import FastAPI, File, UploadFile
+from fastapi import APIRouter, File, UploadFile
 import ollama
 import base64 #표준 라이브러리에 있음
-from fastapi.middleware.cors import CORSMiddleware
 
 
-app = FastAPI()
 
-# CORS 설정
-origins = [
-    "http://localhost",
-    "http://localhost:3000",
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["*"],
-)
+router = APIRouter()
 
 
-@app.post("/image_description/")
+@router.post("/image_description/")
 async def simulate_image_description(file: UploadFile = File(...)):
     
     
