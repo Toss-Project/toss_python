@@ -56,8 +56,8 @@ async def random_image_generator():
     return FileResponse(temp_image_path, media_type="image/png", filename="generated_image.png")
 
 
-@app.post("/image_description/")
-async def simulate_image_description(file: UploadFile = File(...)):
+@app.post("/image-description/")
+async def image_description(file: UploadFile = File(...)):
     
     contents = await file.read()
     
