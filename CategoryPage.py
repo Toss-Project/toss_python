@@ -3,6 +3,7 @@ import os
 import traceback
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+from transformers import SpeechT5Processor, SpeechT5ForTextToSpeech, SpeechT5HifiGan
 import ollama
 import base64 #표준 라이브러리에 있음
 import torch
@@ -13,11 +14,16 @@ import subprocess
 from fastapi.responses import StreamingResponse
 import io
 from diffusers import StableDiffusionPipeline
+import soundfile as sf
+import base64
+from pydantic import BaseModel
+from datasets import load_dataset
 
 # FFmpeg 경로 설정 (실제 경로로 변경해주세요)
 # 시스템 환경변수 -> 시스템변수-> path 추가해야함(아래 경로 추가)
 ffmpeg_path = r"C:\\ffmpeg-2024-07-07-git-0619138639-full_build\\bin"
 os.environ["PATH"] += os.pathsep + ffmpeg_path
+
 
 
 app = FastAPI()
@@ -35,6 +41,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 모델과 프로세서 로드 (앱 시작 시 한 번만 로드)
+processor2 = SpeechT5Processor.from_pretrained("microsoft/speecht5_tts")
+model2 = SpeechT5ForTextToSpeech.from_pretrained("microsoft/speecht5_tts")
+vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan")
+
+# 스피커 임베딩 로드
+embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
+speaker_embeddings = torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze(0)
+
+class TextRequest(BaseModel):
+    text: str
 
 
 # 모델과 프로세서 로드
@@ -181,6 +199,28 @@ async def transcribe_audio(file: UploadFile = File(..., max_size=1024*1024*10)):
     except Exception as e:
         print(f"Error occurred: {str(e)}")
         print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/text-to-speech/")
+async def text_to_speech(request: TextRequest):
+    try:
+        print(request.text)
+        # 텍스트를 입력 형식으로 변환
+        inputs = processor2(text=request.text, return_tensors="pt")
+
+        # 음성 생성
+        speech = model2.generate_speech(inputs["input_ids"], speaker_embeddings, vocoder=vocoder)
+
+
+        # NumPy 배열을 WAV 형식의 바이트로 변환
+        byte_io = io.BytesIO()
+        sf.write(byte_io, speech.numpy(), samplerate=16000, format='WAV')
+        byte_io.seek(0)
+
+        # 스트리밍 응답으로 오디오 데이터 반환
+        return StreamingResponse(byte_io, media_type="audio/webm")
+
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
