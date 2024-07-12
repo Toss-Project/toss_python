@@ -110,23 +110,6 @@ async def denoise_audio(file: UploadFile = File(..., max_size=1024*1024*10)):  #
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
     
-# Grammar Correction using Ollama
-@app.post("/correct-grammar/")
-async def correct_grammar(text: str = Form(...)):
-    try:
-        prompt = f"Please correct the grammar of the following text. Only return the corrected sentence without any additional explanations: \"{text}\""
-        response = ollama_client.generate(
-            model='gemma2:latest',
-            prompt=prompt
-        )
-
-        corrected_text = response['response']
-        return {
-            "original_text": text,
-            "corrected_text": corrected_text,
-        }
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})    
 
 if __name__ == "__main__":
     import uvicorn
