@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 import uvicorn
 import os
@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydub import AudioSegment
 import subprocess
 import ollama
+import noisereduce as nr
+import soundfile as sf
 
 # FFmpeg 경로 설정 (실제 경로로 변경해주세요)
 # 시스템 환경변수 -> 시스템변수-> path 추가해야함(아래 경로 추가)
@@ -49,6 +51,12 @@ AudioSegment.ffprobe = os.path.join(ffmpeg_path, "ffprobe.exe")
 # Ollama Client 초기화
 ollama_client = ollama.Client()
 
+# 노이즈 제거 함수
+def reduce_noise(input_file, output_file):
+    data, rate = sf.read(input_file)
+    reduced_noise = nr.reduce_noise(y=data, sr=rate)
+    sf.write(output_file, reduced_noise, rate)
+
 # ASR #############################################################################
 @app.post("/api/automaticspeechrecognition")
 async def transcribe_audio(file: UploadFile = File(..., max_size=1024*1024*10)):  # 10MB로 제한
@@ -68,9 +76,13 @@ async def transcribe_audio(file: UploadFile = File(..., max_size=1024*1024*10)):
         wav_file = os.path.join(tmp_dir, "converted.wav")
         subprocess.call([AudioSegment.ffmpeg, '-i', audio_file, wav_file])
 
-        # WAV 파일 로드
+        # 노이즈 제거 적용
+        denoised_wav_file = os.path.join(tmp_dir, "denoised.wav")
+        reduce_noise(wav_file, denoised_wav_file)
+
+        # 노이즈가 제거된 WAV 파일 로드
         try:
-            audio = AudioSegment.from_wav(wav_file)
+            audio = AudioSegment.from_wav(denoised_wav_file)
         except Exception as e:
             print(f"Error loading audio file: {str(e)}")
             print(f"FFmpeg path: {AudioSegment.ffmpeg}")
@@ -78,7 +90,7 @@ async def transcribe_audio(file: UploadFile = File(..., max_size=1024*1024*10)):
             raise
 
         # torchaudio를 사용하여 WAV 파일 로드
-        waveform, sample_rate = torchaudio.load(wav_file)
+        waveform, sample_rate = torchaudio.load(denoised_wav_file)
         print(f"Loaded waveform: {waveform.shape}, Sample rate: {sample_rate}")
 
         if sample_rate != 16000:
@@ -105,6 +117,7 @@ async def transcribe_audio(file: UploadFile = File(..., max_size=1024*1024*10)):
         # 임시 파일 삭제
         os.remove(audio_file)
         os.remove(wav_file)
+        os.remove(denoised_wav_file)
         os.remove(text_file)
 
         return {"transcription": transcription[0]}
@@ -115,6 +128,35 @@ async def transcribe_audio(file: UploadFile = File(..., max_size=1024*1024*10)):
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 # ASR/ #############################################################################
+
+# 노이즈 제거 엔드포인트
+@app.post("/denoise")
+async def denoise_audio(file: UploadFile = File(..., max_size=1024*1024*10)):  # 10MB로 제한
+    try:
+        # 파일을 디스크에 저장
+        audio_data = await file.read()
+        input_file = os.path.join(tmp_dir, file.filename)
+        with open(input_file, "wb") as f:
+            f.write(audio_data)
+
+        # 노이즈 제거 적용
+        output_file = os.path.join(tmp_dir, "denoised_" + file.filename)
+        reduce_noise(input_file, output_file)
+
+        # 처리된 파일 반환
+        return FileResponse(output_file, media_type="audio/wav", filename="denoised_audio.wav")
+
+    except Exception as e:
+        print(f"Error occurred: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        # 임시 파일 삭제
+        if os.path.exists(input_file):
+            os.remove(input_file)
+        if os.path.exists(output_file):
+            os.remove(output_file)
 
 # Grammar Correction using Ollama
 @app.post("/correct-grammar/")
