@@ -1,6 +1,7 @@
 from diffusers import StableDiffusionPipeline
 import torch
 from fastapi import FastAPI , Form
+# from fastapi import APIRouter , Form
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import io
@@ -11,6 +12,7 @@ pipe = pipe.to("cuda")
 
 app = FastAPI()
 
+router = APIRouter()
 
 # CORS 설정
 origins = [

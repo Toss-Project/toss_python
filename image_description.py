@@ -1,5 +1,6 @@
 # STEP 1
 from fastapi import FastAPI, File, UploadFile
+# from fastapi import APIRouter, File, UploadFile
 import ollama
 import base64 #표준 라이브러리에 있음
 import torch
@@ -7,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 
 app = FastAPI()
+
+# router = APIRouter()
 
 # CORS 설정
 origins = [

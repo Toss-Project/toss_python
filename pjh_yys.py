@@ -1,49 +1,10 @@
-# import torchaudio
-# from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
-# import torch
-
-# def transcribe_audio(audio_file_path, model_name="facebook/wav2vec2-base-960h"):
-#     # 모델과 프로세서 로드
-#     processor = Wav2Vec2Processor.from_pretrained(model_name)
-#     model = Wav2Vec2ForCTC.from_pretrained(model_name)
-
-#     # 음성 파일 로드 및 변환
-#     waveform, sample_rate = torchaudio.load(audio_file_path)
-
-#     # 음성 파일이 16kHz가 아니라면 리샘플링
-#     if sample_rate != 16000:
-#         resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=16000)
-#         waveform = resampler(waveform)
-#         sample_rate = 16000
-
-#     # 모델에 입력할 준비
-#     input_values = processor(waveform.squeeze().numpy(), return_tensors="pt", sampling_rate=sample_rate).input_values
-
-#     # 모델을 사용하여 텍스트 예측
-#     with torch.no_grad():
-#         logits = model(input_values).logits
-
-#     # 예측 결과에서 텍스트 추출
-#     predicted_ids = torch.argmax(logits, dim=-1)
-#     transcription = processor.batch_decode(predicted_ids)
-
-#     return transcription[0]
-
-
-# # 사용 예제
-# audio_file_path = "sample1.wav"
-
-# transcription = transcribe_audio(audio_file_path)
-# print("Transcription: ", transcription)
-
-# # 텍스트 파일로 저장
-# with open("transcription.txt", "w") as f:
-#     f.write(transcription)
+# STEP 1
 import os
 import traceback
 from fastapi import FastAPI, File, UploadFile, HTTPException
-# from fastapi import APIRouter, File, UploadFile, HTTPException
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+import ollama
+import base64 #표준 라이브러리에 있음
 import torch
 import torchaudio
 from fastapi.middleware.cors import CORSMiddleware
@@ -55,11 +16,14 @@ import subprocess
 ffmpeg_path = r"C:\\ffmpeg-2024-07-07-git-0619138639-full_build\\bin"
 os.environ["PATH"] += os.pathsep + ffmpeg_path
 
+
 app = FastAPI()
-# router = APIRouter()
 
 # CORS 설정
-origins = ["*"]
+origins = [
+    "*",
+
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -68,6 +32,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # 모델과 프로세서 로드
 model_name = "facebook/wav2vec2-base-960h"
@@ -83,6 +48,31 @@ if not os.path.exists(tmp_dir):
 AudioSegment.converter = os.path.join(ffmpeg_path, "ffmpeg.exe")
 AudioSegment.ffmpeg = os.path.join(ffmpeg_path, "ffmpeg.exe")
 AudioSegment.ffprobe = os.path.join(ffmpeg_path, "ffprobe.exe")
+
+@app.post("/image_description/")
+async def simulate_image_description(file: UploadFile = File(...)):
+    
+    
+    contents = await file.read()
+    
+    # 이미지를 base64로 인코딩
+    image_base64 = base64.b64encode(contents).decode('utf-8')
+    
+    model = ollama.Client()
+    
+    # llava 모델에 이미지와 프롬프트 전송
+    prompt = "Please describe this image with different content in English three times within 30 characters in one template sentence. And don't say anything other than the three template sentences. Organize the three template sentences into numbers 1, 2, and 3, and just write the image description."
+    response = model.generate(
+        model='llava:7b',
+        prompt=prompt,
+        images=[image_base64]
+    )
+
+    torch.cuda.empty_cache()
+
+    return response['response']
+
+
 
 # @app.post("/api/automaticspeechrecognition")
 @app.post("/api/automaticspeechrecognition")
@@ -153,3 +143,19 @@ async def transcribe_audio(file: UploadFile = File(..., max_size=1024*1024*10)):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+
+
+
+
+
+
+
+# 이미지 설명을 시뮬레이션합니다 (실제로는 이미지 분석 모델의 출력일 것입니다)
+# image_description = "A red apple sitting on a wooden table next to an open book."
+
+# result = simulate_image_description(image_description)
+
+
+# print(result)
