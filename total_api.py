@@ -1,7 +1,6 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from happytransformer import HappyTextToText, TTSettings
 import uvicorn
 import os
 import traceback
@@ -11,6 +10,7 @@ import torchaudio
 from fastapi.middleware.cors import CORSMiddleware
 from pydub import AudioSegment
 import subprocess
+import ollama
 
 # FFmpeg 경로 설정 (실제 경로로 변경해주세요)
 # 시스템 환경변수 -> 시스템변수-> path 추가해야함(아래 경로 추가)
@@ -46,12 +46,8 @@ AudioSegment.ffmpeg = os.path.join(ffmpeg_path, "ffmpeg.exe")
 AudioSegment.ffprobe = os.path.join(ffmpeg_path, "ffprobe.exe")
 
 
-# HappyTextToText 모델 초기화
-happy_tt = HappyTextToText("T5", "vennify/t5-base-grammar-correction")
-args = TTSettings(num_beams=10, max_length=1000, min_length=1)
-
-class TextRequest(BaseModel):
-    text: str
+# Ollama Client 초기화
+ollama_client = ollama.Client()
 
 # ASR #############################################################################
 @app.post("/api/automaticspeechrecognition")
@@ -120,22 +116,19 @@ async def transcribe_audio(file: UploadFile = File(..., max_size=1024*1024*10)):
         raise HTTPException(status_code=500, detail=str(e))
 # ASR/ #############################################################################
 
-@app.post("/correct_grammar")
-async def correct_grammar(request: TextRequest):
+# Grammar Correction using Ollama
+@app.post("/correct-grammar/")
+async def correct_grammar(text: str = Form(...)):
     try:
-        # 업로드된 파일 내용 읽기
-        # contents = await file.read()
-        # text = contents.decode("utf-8")
+        prompt = f"Please correct the grammar of the following text. Only return the corrected sentence without any additional explanations: \"{text}\""
+        response = ollama_client.generate(
+            model='gemma2:latest',
+            prompt=prompt
+        )
 
-        # 문법 교정
-        input_text = f"grammar: {request.text}"
-        result = happy_tt.generate_text(input_text, args=args)
-
-        # <red> 태그를 추가하여 문법 교정된 부분 강조
-        corrected_text = result.text.replace("<red>", "<span class='correction-red'>").replace("</red>", "</span>")
-
+        corrected_text = response['response']
         return JSONResponse(content={
-            "original_text": request.text,
+            "original_text": text,
             "corrected_text": corrected_text,
         })
     except Exception as e:
