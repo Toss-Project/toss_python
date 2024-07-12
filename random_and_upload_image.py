@@ -1,11 +1,20 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.responses import JSONResponse
+from transformers import SpeechT5Processor, SpeechT5ForTextToSpeech, SpeechT5HifiGan
 from random import randint
 import ollama
 import torch
+import soundfile as sf
+from datasets import load_dataset
 from diffusers import StableDiffusionPipeline
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import base64
+from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
+import io
+import numpy as np
+import os
 
 model_id = "runwayml/stable-diffusion-v1-5"
 pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
@@ -26,6 +35,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 모델과 프로세서 로드 (앱 시작 시 한 번만 로드)
+processor = SpeechT5Processor.from_pretrained("microsoft/speecht5_tts")
+model = SpeechT5ForTextToSpeech.from_pretrained("microsoft/speecht5_tts")
+vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan")
+
+# 스피커 임베딩 로드
+embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
+speaker_embeddings = torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze(0)
+
+class TextRequest(BaseModel):
+    text: str
 
 @app.get("/random-image-generator/")
 async def random_image_generator():
@@ -75,3 +96,27 @@ async def image_description(file: UploadFile = File(...)):
     )
 
     return response['response']
+
+
+
+@app.post("/text-to-speech/")
+async def text_to_speech(request: TextRequest):
+    try:
+        # 텍스트를 입력 형식으로 변환
+        inputs = processor(text=request.text, return_tensors="pt")
+
+        # 음성 생성
+        speech = model.generate_speech(inputs["input_ids"], speaker_embeddings, vocoder=vocoder)
+
+        print(request.text)
+
+        # NumPy 배열을 WAV 형식의 바이트로 변환
+        byte_io = io.BytesIO()
+        sf.write(byte_io, speech.numpy(), samplerate=16000, format='WAV')
+        byte_io.seek(0)
+
+        # 스트리밍 응답으로 오디오 데이터 반환
+        return StreamingResponse(byte_io, media_type="audio/webm")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
