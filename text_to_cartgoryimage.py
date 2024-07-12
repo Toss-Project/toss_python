@@ -12,7 +12,7 @@ pipe = pipe.to("cuda")
 
 app = FastAPI()
 
-router = APIRouter()
+# router = APIRouter()
 
 # CORS 설정
 origins = [
