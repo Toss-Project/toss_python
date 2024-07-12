@@ -78,28 +78,28 @@ async def simulate_image_description(file: UploadFile = File(...)):
 
     return response['response']
 
-# @app.post("/image-description")
-# async def simulate_image_description(file: UploadFile = File(...)):
+@app.post("/image-text matching")
+async def simulate_image_description(file: UploadFile = File(...),text: str = Form(...)):
     
     
-#     contents = await file.read()
+    contents = await file.read()
     
-#     # 이미지를 base64로 인코딩
-#     image_base64 = base64.b64encode(contents).decode('utf-8')
+    # 이미지를 base64로 인코딩
+    image_base64 = base64.b64encode(contents).decode('utf-8')
     
-#     model = ollama.Client()
+    model = ollama.Client()
     
-#     # llava 모델에 이미지와 프롬프트 전송
-#     prompt = "Please describe this image with different content in English three times within 30 characters in one template sentence. And don't say anything other than the three template sentences. Organize the three template sentences into numbers 1, 2, and 3, and just write the image description."
-#     response = model.generate(
-#         model='llava:7b',
-#         prompt=prompt,
-#         images=[image_base64]
-#     )
+    # llava 모델에 이미지와 프롬프트 전송
+    prompt = f"{text} Give us a score from 0 to 100 on how well this text describes the image."
+    response = model.generate(
+        model='llava:7b',
+        prompt=prompt,
+        images=[image_base64]
+    )
 
-#     torch.cuda.empty_cache()
+    torch.cuda.empty_cache()
 
-#     return response['response']
+    return response['response']
 
 
 @app.post("/text_to_cartgoryImage/")
