@@ -7,7 +7,7 @@ app = FastAPI()
 
 # HappyTextToText 모델 초기화
 happy_tt = HappyTextToText("T5", "vennify/t5-base-grammar-correction")
-args = TTSettings(num_beams=10, max_length=1000, min_length=1)
+args = TTSettings(num_beams=20, max_length=1000, min_length=1, early_stopping=True)
 
 @app.post("/correct_grammar")
 async def correct_grammar(file: UploadFile = File(...)):
