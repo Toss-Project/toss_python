@@ -1,40 +1,33 @@
-from fastapi import APIRouter
+from fastapi import FastAPI, File, UploadFile
 from random import randint
 import ollama
 import torch
 from diffusers import StableDiffusionPipeline
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+import base64
 
 model_id = "runwayml/stable-diffusion-v1-5"
 pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
 
-router = APIRouter()
+app = FastAPI()
 
-# # CORS 설정
-# origins = [
-#     "http://localhost",
-#     "http://localhost:3000",
-#     "*",  # 모든 도메인 허용
-# ]
+#CORS 설정
+origins = [
+    "http://localhost",
+    "http://localhost:3000"
+]
 
-# CORS 설정
-# origins = [
-#     "http://localhost",
-#     "http://localhost:3000"
-# ]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=origins,
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-@router.get("/random-image-generator/")
+@app.get("/random-image-generator/")
 async def random_image_generator():
     # 랜덤 카테고리 선정
     random_category = ["fruit", "school", "hospital", "park", "mart", "friend", "football", "home", "airplane", "bus"]
@@ -62,10 +55,6 @@ async def random_image_generator():
 
     return FileResponse(temp_image_path, media_type="image/png", filename="generated_image.png")
 
-
-# STEP 1
-from fastapi import File, UploadFile
-import base64
 
 @app.post("/image_description/")
 async def simulate_image_description(file: UploadFile = File(...)):
