@@ -28,6 +28,9 @@ from fastapi.responses import JSONResponse
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
 import ffmpeg
 import tempfile
+from typing import Optional
+from sentence_transformers import SentenceTransformer, util
+
 
 # FFmpeg 경로 설정 (실제 경로로 변경해주세요)
 # 시스템 환경변수 -> 시스템변수-> path 추가해야함(아래 경로 추가)
@@ -68,6 +71,8 @@ class TextRequest(BaseModel):
 # 모델과 프로세서 로드
 processor = WhisperProcessor.from_pretrained("openai/whisper-large-v3")
 model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-large-v3")
+sentence_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+
 
 TARGET_SR = 16000
 
@@ -518,6 +523,34 @@ async def correct_grammar(text: TextRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+@app.post("/compare-texts/")
+async def compare_texts(file: UploadFile = File(..., description="Upload an image file"),
+                        audio_file: UploadFile = File(..., description="Upload an audio file")):
+    try:
+        # Step 1: Generate description from image
+        contents_image = await file.read()
+        image_base64 = base64.b64encode(contents_image).decode('utf-8')
+        response_image = await simulate_image_description(contents_image)
+        
+        # Step 2: Transcribe audio to text
+        transcription_audio = await transcribe_audio(audio_file)
+        audio_text = transcription_audio["transcription"]
+        
+        # Step 3: Compare texts
+        similarity_score = compute_similarity(response_image, audio_text)  # Implement your own similarity function
+        
+        return JSONResponse(status_code=200, content={"image_description": response_image, 
+                                                      "audio_transcription": audio_text,
+                                                      "similarity_score": similarity_score})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Function to compute similarity between two texts (you can customize this based on your requirements)
+def compute_similarity(text1, text2):
+    distance_score = distance(text1.lower(), text2.lower())
+    similarity_score = 1 - (distance_score / max(len(text1), len(text2)))
+    return similarity_score    
 
 
 
