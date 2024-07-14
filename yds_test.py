@@ -1,8 +1,6 @@
 # STEP 1
 import os
 import traceback
-import tempfile
-import noisereduce as nr
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 from transformers import SpeechT5Processor, SpeechT5ForTextToSpeech, SpeechT5HifiGan
@@ -26,8 +24,10 @@ import soundfile as sf
 import base64
 from pydantic import BaseModel
 from datasets import load_dataset
-from fastapi.responses import JSONResponse, FileResponse
-import uvicorn
+from fastapi.responses import JSONResponse
+from transformers import WhisperProcessor, WhisperForConditionalGeneration
+import ffmpeg
+import tempfile
 
 # FFmpeg 경로 설정 (실제 경로로 변경해주세요)
 # 시스템 환경변수 -> 시스템변수-> path 추가해야함(아래 경로 추가)
@@ -66,9 +66,11 @@ class TextRequest(BaseModel):
 
 
 # 모델과 프로세서 로드
-model_name = "facebook/wav2vec2-base-960h"
-processor = Wav2Vec2Processor.from_pretrained(model_name)
-model = Wav2Vec2ForCTC.from_pretrained(model_name)
+processor = WhisperProcessor.from_pretrained("openai/whisper-large-v3")
+model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-large-v3")
+
+TARGET_SR = 16000
+
 model_id = "runwayml/stable-diffusion-v1-5"
 pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
@@ -78,9 +80,6 @@ tmp_dir = "tmp"
 if not os.path.exists(tmp_dir):
     os.makedirs(tmp_dir)
 
-# 임시 디렉토리 생성 및 관리
-temp_dir = tempfile.TemporaryDirectory()
-
 # FFmpeg 경로 직접 지정
 AudioSegment.converter = os.path.join(ffmpeg_path, "ffmpeg.exe")
 AudioSegment.ffmpeg = os.path.join(ffmpeg_path, "ffmpeg.exe")
@@ -89,12 +88,6 @@ AudioSegment.ffprobe = os.path.join(ffmpeg_path, "ffprobe.exe")
 
 # Ollama Client 초기화
 ollama_client = ollama.Client()
-
-# 노이즈 제거 함수
-def reduce_noise(input_file, output_file):
-    data, rate = sf.read(input_file)
-    reduced_noise = nr.reduce_noise(y=data, sr=rate)
-    sf.write(output_file, reduced_noise, rate)
 
 
 def get_sinusoid_encoding(n_position, d_hid):
@@ -431,58 +424,54 @@ async def text_to_cartgoryImage(text: str = Form(...)):
 
     return StreamingResponse(io.BytesIO(img_byte_arr), media_type="image/png")
 
-# ASR 엔드포인트
+
+# @app.post("/api/automaticspeechrecognition")
 @app.post("/api/automaticspeechrecognition")
-async def transcribe_audio(file: UploadFile = File(..., max_size=1024*1024*10)):  # 10MB 제한
+async def transcribe_audio(file: UploadFile = File(..., max_size=1024*1024*10)):  # 10MB로 제한
+    # pip install ffmpeg-python 설치해야함
     try:
-        # 파일을 디스크에 저장
-        audio_data = await file.read()
-        audio_file = os.path.join(temp_dir.name, file.filename)
-        with open(audio_file, "wb") as f:
-            f.write(audio_data)
+        # 임시 파일 생성
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_webm:
+            temp_webm.write(await file.read())
+            temp_webm_path = temp_webm.name
 
-        # WEBM 파일을 WAV 파일로 변환
-        wav_file = os.path.join(temp_dir.name, "converted.wav")
-        subprocess.call([AudioSegment.ffmpeg, '-i', audio_file, wav_file])
+        # wav 파일로 변환
+        temp_wav_path = temp_webm_path.replace(".webm", ".wav")
+        
+        (
+            ffmpeg
+            .input(temp_webm_path)
+            .output(temp_wav_path, acodec='pcm_s16le', ac=1, ar=TARGET_SR)
+            .overwrite_output()
+            .run(capture_stdout=True, capture_stderr=True)
+        )
 
-        # 노이즈 제거 적용
-        denoised_wav_file = os.path.join(temp_dir.name, "denoised.wav")
-        reduce_noise(wav_file, denoised_wav_file)
+        # wav 파일 로드
+        audio, _ = librosa.load(temp_wav_path, sr=TARGET_SR)
+        
+        # float32로 변환 및 정규화
+        audio = librosa.util.normalize(audio.astype(np.float32))
+        
+        # 입력 특성 생성
+        input_features = processor(audio, sampling_rate=TARGET_SR, return_tensors="pt").input_features 
 
-        # WAV 파일 로드 및 처리
-        waveform, sample_rate = torchaudio.load(denoised_wav_file)
-        # (나머지 코드는 여기서부터)
+        # 영어 텍스트 생성
+        with torch.no_grad():
+            predicted_ids_en = model.generate(input_features, task="transcribe", language="en")
+        
+        # 토큰 ID를 텍스트로 디코딩
+        transcription = processor.batch_decode(predicted_ids_en, skip_special_tokens=True)[0]
+
+        # 임시 파일 삭제
+        os.unlink(temp_webm_path)
+        os.unlink(temp_wav_path)
+
+        return {"transcription": transcription}
 
     except Exception as e:
-        print(f"Error occurred during ASR processing: {str(e)}")
+        print(f"Error occurred: {str(e)}")
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
-
-# 노이즈 제거 엔드포인트
-@app.post("/denoise")
-async def denoise_audio(file: UploadFile = File(..., max_size=1024*1024*10)):  # 10MB 제한
-    try:
-        # 파일을 디스크에 저장
-        audio_data = await file.read()
-        input_file = os.path.join(temp_dir.name, file.filename)
-        with open(input_file, "wb") as f:
-            f.write(audio_data)
-
-        # 노이즈 제거 적용
-        output_file = os.path.join(temp_dir.name, "denoised_" + file.filename)
-        reduce_noise(input_file, output_file)
-
-        # 처리된 파일 반환
-        if not os.path.exists(output_file):
-            raise HTTPException(status_code=500, detail="Denoised file was not created")
-
-        return FileResponse(output_file, media_type="audio/wav", filename="denoised_audio.wav")
-
-    except Exception as e:
-        print(f"Error occurred during noise reduction: {str(e)}")
-        print(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
-    
     
 @app.post("/text-to-speech/")
 async def text_to_speech(request: TextRequest):
@@ -525,7 +514,6 @@ async def correct_grammar(text: TextRequest):
         }
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
-    
 
 if __name__ == "__main__":
     import uvicorn
