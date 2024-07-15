@@ -28,6 +28,7 @@ from fastapi.responses import JSONResponse
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
 import ffmpeg
 import tempfile
+from sentence_transformers import SentenceTransformer, util
 
 # FFmpeg 경로 설정 (실제 경로로 변경해주세요)
 # 시스템 환경변수 -> 시스템변수-> path 추가해야함(아래 경로 추가)
@@ -52,6 +53,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+model_compare = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+
 # 모델과 프로세서 로드 (앱 시작 시 한 번만 로드)
 processor2 = SpeechT5Processor.from_pretrained("microsoft/speecht5_tts")
 model2 = SpeechT5ForTextToSpeech.from_pretrained("microsoft/speecht5_tts")
@@ -60,6 +63,10 @@ vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan")
 # 스피커 임베딩 로드
 embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
 speaker_embeddings = torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze(0)
+
+class compareTextRequest(BaseModel):
+    text1: str
+    text2: str
 
 class TextRequest(BaseModel):
     text: str
@@ -514,6 +521,46 @@ async def correct_grammar(text: TextRequest):
         }
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+    
+
+@app.post("/compare-texts/")
+async def compare_texts(request: compareTextRequest):
+
+    sentences1 = request.text1
+    sentences2 = request.text2
+    print(sentences1)
+    print(sentences2)
+
+
+    # 문장 임베딩 생성
+    embedding1 = model_compare.encode([sentences1])[0]  # [0]을 추가하여 1차원 벡터 얻기
+    embedding2 = model_compare.encode([sentences2])[0]  # [0]을 추가하여 1차원 벡터 얻기
+
+    # 유사도 계산
+    similarity = util.pytorch_cos_sim(embedding1, embedding2).item()
+
+
+
+    # 문장 임베딩 생성
+    # embeddings1 = model_compare.encode(sentences1)
+    # embeddings2 = model_compare.encode(sentences2)
+
+    # # 유사도 계산
+    # similarities = np.zeros((len(sentences1), len(sentences2)))
+
+    # for i, embedding1 in enumerate(embeddings1):
+    #     for j, embedding2 in enumerate(embeddings2):
+    #         similarities[i][j] = util.pytorch_cos_sim(embedding1, embedding2).item()
+
+    similarities_result = similarity * 100
+
+
+    return {"similarity_result": similarities_result}
+
+
+
+
+
 
 if __name__ == "__main__":
     import uvicorn
