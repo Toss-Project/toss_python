@@ -1,7 +1,7 @@
 # STEP 1
 import os
 import traceback
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Form
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 from transformers import SpeechT5Processor, SpeechT5ForTextToSpeech, SpeechT5HifiGan
 import ollama
@@ -28,8 +28,8 @@ from fastapi.responses import JSONResponse
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
 import ffmpeg
 import tempfile
-from typing import Optional
 from sentence_transformers import SentenceTransformer, util
+import Levenshtein
 
 
 # FFmpeg 경로 설정 (실제 경로로 변경해주세요)
@@ -66,6 +66,10 @@ speaker_embeddings = torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze
 
 class TextRequest(BaseModel):
     text: str
+
+class TextComparisonRequest(BaseModel):
+    text1: str
+    text2: str   
 
 
 # 모델과 프로세서 로드
@@ -478,6 +482,13 @@ async def transcribe_audio(file: UploadFile = File(..., max_size=1024*1024*10)):
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
     
+# 텍스트 비교 함수 (Levenshtein 거리 사용)
+def compute_levenshtein_similarity(text1, text2):
+    distance = Levenshtein.distance(text1, text2)
+    max_len = max(len(text1), len(text2))
+    similarity_score = (1 - distance / max_len) * 100  # 유사도를 백분율로 변환
+    return round(similarity_score, 2)  
+    
 @app.post("/text-to-speech/")
 async def text_to_speech(request: TextRequest):
     try:
@@ -519,51 +530,53 @@ async def correct_grammar(text: TextRequest):
         }
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+    
+@app.post("/compare-texts/")
+async def compare_texts(request: TextComparisonRequest):
+    text1 = request.text1
+    text2 = request.text2
 
+    # Levenshtein 거리 계산
+    lev_distance = Levenshtein.distance(text1, text2)
+
+    # 유사도 점수 계산 (0-100 범위로 변환)
+    max_length = max(len(text1), len(text2))
+    similarity_score = (1 - lev_distance / max_length) * 100
+
+    return {"similarity_score": similarity_score}
+
+   
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
-@app.post("/compare-texts/")
-async def compare_texts(file: UploadFile = File(..., description="Upload an image file"),
-                        audio_file: UploadFile = File(..., description="Upload an audio file")):
-    try:
-        # Step 1: Generate description from image
-        contents_image = await file.read()
-        image_base64 = base64.b64encode(contents_image).decode('utf-8')
-        response_image = await simulate_image_description(contents_image)
+# @app.post("/compare-texts/")
+# async def compare_texts(file: UploadFile = File(..., description="Upload an image file"),
+#                         audio_file: UploadFile = File(..., description="Upload an audio file")):
+#     try:
+#         # Step 1: Generate description from image
+#         contents_image = await file.read()
+#         image_base64 = base64.b64encode(contents_image).decode('utf-8')
+#         response_image = await simulate_image_description(contents_image)
         
-        # Step 2: Transcribe audio to text
-        transcription_audio = await transcribe_audio(audio_file)
-        audio_text = transcription_audio["transcription"]
+#         # Step 2: Transcribe audio to text
+#         transcription_audio = await transcribe_audio(audio_file)
+#         audio_text = transcription_audio["transcription"]
         
-        # Step 3: Compare texts
-        similarity_score = compute_similarity(response_image, audio_text)  # Implement your own similarity function
+#         # Step 3: Compare texts
+#         similarity_score = compute_similarity(response_image, audio_text)  # Implement your own similarity function
         
-        return JSONResponse(status_code=200, content={"image_description": response_image, 
-                                                      "audio_transcription": audio_text,
-                                                      "similarity_score": similarity_score})
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Function to compute similarity between two texts (you can customize this based on your requirements)
-def compute_similarity(text1, text2):
-    distance_score = distance(text1.lower(), text2.lower())
-    similarity_score = 1 - (distance_score / max(len(text1), len(text2)))
-    return similarity_score    
+#         return JSONResponse(status_code=200, content={"image_description": response_image, 
+#                                                       "audio_transcription": audio_text,
+#                                                       "similarity_score": similarity_score})
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
 
+# # 이미지 설명을 시뮬레이션합니다 (실제로는 이미지 분석 모델의 출력일 것입니다)
+# # image_description = "A red apple sitting on a wooden table next to an open book."
+
+# # result = simulate_image_description(image_description)
 
 
-
-
-
-
-
-# 이미지 설명을 시뮬레이션합니다 (실제로는 이미지 분석 모델의 출력일 것입니다)
-# image_description = "A red apple sitting on a wooden table next to an open book."
-
-# result = simulate_image_description(image_description)
-
-
-# print(result)
+# # print(result)
